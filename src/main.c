@@ -1,7 +1,6 @@
 /* ChibiOS includes */
 #include "ch.h"
 #include "hal.h"
-#include "test.h"
 
 /*
  * Red LED blinker thread, times are in milliseconds.
@@ -43,15 +42,4 @@ int main(void) {
    * Creates the blinker thread.
    */
   chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
-
-  /*
-   * Normal main() thread activity, in this demo it does nothing except
-   * sleeping in a loop and check the button state.
-   * GPIOB,8 is the button on the Maple Mini
-   */
-  while (TRUE) {
-	if(palReadPad(GPIOB, 8))
-      TestThread(&SD1);
-    chThdSleepMilliseconds(500);
-  }
 }
