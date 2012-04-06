@@ -30,6 +30,7 @@ void out(char *msg)
     size_t c = 0;
     while (msg[c] != '\0')
         chIOPut(&SD1, msg[c++]);
+   chThdSleepMilliseconds(5);
 }
 
 static
@@ -54,6 +55,7 @@ void outln(char *msg)
     out(msg);
     chIOPut(&SD1, '\n');
     chIOPut(&SD1, '\r');
+    chThdSleepMilliseconds(10);
 }
 
 /*
@@ -70,7 +72,7 @@ static I2CConfig i2ccfg = {
  * BMP085
  */
 static float barometric_altitude=0;
-static float sonar_altitude=0;
+//static float sonar_altitude=0;
 int temperature = 0;
 int pressure = 0;
 
@@ -91,7 +93,7 @@ static struct {
                 short mc;
                 short md;
 } BMP085_cfg;
-static float pressure_0=1;
+//static float pressure_0=1;
 const unsigned char bmp085_oversampling = 3;
 const unsigned int bmp085_pressure_waittime[4] = { 5, 8, 14, 26 };
 
@@ -107,7 +109,7 @@ short bmp085ReadShort (unsigned char addr) {
   if (status != RDY_OK){
     errors = i2cGetErrors(&I2CD1);
 	out("Error:");
-	outln(errors);
+	outln((char *)errors);
 	
 	return 0;
   } else {
@@ -141,7 +143,7 @@ int bmp085ReadPressure (void) {
   if (status != RDY_OK){
     errors = i2cGetErrors(&I2CD1);
 	out("Error Pressure 1:");
-	outln(errors);
+	outln((char *)errors);
   }
   chThdSleepMilliseconds(bmp085_pressure_waittime[bmp085_oversampling]);
 
@@ -161,7 +163,7 @@ int bmp085ReadPressure (void) {
   if (status != RDY_OK){
     errors = i2cGetErrors(&I2CD1);
 	out("Error Pressure 2:");
-	outln(errors);
+	outln((char *)errors);
   }
 
   return (int)(((int)raw[0]<<16) | ((int)raw[1]<<8) | ((int)raw[2]))>>(8-bmp085_oversampling);
@@ -203,7 +205,7 @@ void bmp085ReadTemperaturePressure (int* temperature, int* pressure) {
   x2 = (-7357 * p) >> 16;
   *pressure = p + ((x1 + x2 + 3791) >> 4);
 }
-static float BAR_ALT_SMOOTHING = 0.95;
+//static float BAR_ALT_SMOOTHING = 0.95;
 
 /*
 static WORKING_AREA(wa_BMP085_Thread, 512);
@@ -214,12 +216,11 @@ static msg_t BMP085_Thread(void *arg) {
     i2cAcquireBus(&I2CD1);
     bmp085ReadTemperaturePressure(&temperature, &pressure);
     i2cReleaseBus(&I2CD1);
-    barometric_altitude = BAR_ALT_SMOOTHING*barometric_altitude + 
-      (1-BAR_ALT_SMOOTHING)*(-44330.0*((float)pressure/pressure_0-1.0)*(1.0/5.255));
-    if (sonar_altitude>0.5 && sonar_altitude<5.0) { // baro alt seems to drift, adjust p0
-      float dp0 = ((float)pressure)/(1-sonar_altitude*5.255/44300.0) - pressure_0;
-      pressure_0 += 0.1*dp0;
-    }
+    barometric_altitude = BAR_ALT_SMOOTHING*barometric_altitude + (1-BAR_ALT_SMOOTHING)*(-44330.0*((float)pressure/pressure_0-1.0)*(1.0/5.255));
+    //if (sonar_altitude>0.5 && sonar_altitude<5.0) { // baro alt seems to drift, adjust p0
+    //  float dp0 = ((float)pressure)/(1-sonar_altitude*5.255/44300.0) - pressure_0;
+    //  pressure_0 += 0.1*dp0;
+    //}
     chThdSleepMilliseconds(1);
   }
 }
@@ -296,6 +297,8 @@ static msg_t Thread1(void *arg) {
     outInt(temperature, 100000);
     outln("");
   }
+
+  return 0;
 }
 
 /*
@@ -358,4 +361,6 @@ int main(void) {
    * Create the BMP085 thread.
    */
   //chThdCreateStatic(wa_BMP085_Thread, sizeof(wa_BMP085_Thread), LOWPRIO, BMP085_Thread, NULL);
+
+  return 0;
 }
