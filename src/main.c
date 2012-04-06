@@ -22,7 +22,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "ch.h"
 #include "hal.h"
 
+/* ARM includes */
 #include "math.h"
+
+/* Project includes */
+#include "eeprom.h"
+static EepromFileStream Efs;
 
 static
 void out(char *msg)
@@ -30,7 +35,7 @@ void out(char *msg)
     size_t c = 0;
     while (msg[c] != '\0')
         chIOPut(&SD1, msg[c++]);
-   chThdSleepMilliseconds(5);
+   chThdSleepMilliseconds(10);
 }
 
 static
@@ -230,7 +235,7 @@ static msg_t BMP085_Thread(void *arg) {
  * Red LED blinker thread, times are in milliseconds.
  * GPIOB,1 is the LED on the Maple Mini
  */
-static WORKING_AREA(waThread1, 128);
+static WORKING_AREA(waThread1, 1024);
 static msg_t Thread1(void *arg) {
 
   (void)arg;
@@ -240,9 +245,11 @@ static msg_t Thread1(void *arg) {
     palSetPad(GPIOB, 1);
     chThdSleepMilliseconds(500);
 
-	temperature = bmp085ReadTemp();
-	pressure = bmp085ReadPressure();
-	//bmp085ReadTemperaturePressure(&temperature, &pressure);
+	//temperature = bmp085ReadTemp();
+	//pressure = bmp085ReadPressure();
+	i2cAcquireBus(&I2CD1);
+	bmp085ReadTemperaturePressure(&temperature, &pressure);
+	i2cReleaseBus(&I2CD1);
 
     int x1, x2, x3, b3, b5, b6, p;
     unsigned int b4, b7;
@@ -296,6 +303,36 @@ static msg_t Thread1(void *arg) {
     out("Temperature:");
     outInt(temperature, 100000);
     outln("");
+
+    /*
+     * EEPROM Read Test
+     */
+#define eeprom_split_addr(txbuf, addr){                                       \
+  (txbuf)[0] = ((uint8_t)((addr >> 8) & 0xFF));                               \
+  (txbuf)[1] = ((uint8_t)(addr & 0xFF));                                      \
+}
+    int i = 0;
+    uint8_t data[1];
+    uint8_t localtxbuf[2];
+    outln("EEPROM Read...");
+    EepromOpen(&Efs);
+    chFileStreamSeek(&Efs, 0);
+    chThdSleepMilliseconds(50);
+    for (i=0; i<128; i++) {
+      //data = EepromReadByte(&Efs);
+      eeprom_split_addr(localtxbuf, i);
+outln("AQUI1");
+      i2cAcquireBus(&I2CD1);
+outln("AQUI2");
+      i2cMasterTransmit(&I2CD1, 0b1010000, localtxbuf, 2, data, 1);
+outln("AQUI3");
+	  i2cReleaseBus(&I2CD1);
+outln("AQUI4");
+      outInt(data[0], 100);
+      out(" ");
+    }
+    outln("");
+    chFileStreamClose(&Efs);
   }
 
   return 0;
@@ -350,7 +387,18 @@ int main(void) {
   BMP085_cfg.md = bmp085ReadShort(0xbe);
   i2cReleaseBus(&I2CD1);
 
-  chThdSleepMilliseconds(20);
+  /*
+   * EEPROM Write Test
+   */
+  int i = 0;
+  outln("EEPROM Write...");
+  EepromOpen(&Efs);
+  chFileStreamSeek(&Efs, 0);
+  for (i=0; i<128; i++) {
+        if (EepromWriteByte(&Efs, (uint8_t)i) != sizeof(uint8_t))
+      outln("write failed");
+  }
+  chFileStreamClose(&Efs);
 
   /*
    * Creates the blinker thread.
