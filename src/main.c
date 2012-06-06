@@ -25,9 +25,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 /* ARM includes */
 #include "math.h"
 
-/* Project includes */
-#include "eeprom.h"
-static EepromFileStream Efs;
+/* MPU6050 */
+#include "MPU60X0.h"
+
+uint8_t txbuf[8];
+uint8_t rxbuf[8];
+
+int32_t P;   // compensated pressure value 
+int32_t T;   // compensated temperature value
+#define SEA_LEVEL_PRESSURE 1020.00
+int32_t ALT; // calculated altitude
 
 static
 void out(char *msg)
@@ -68,347 +75,260 @@ void outln(char *msg)
  */
 static I2CConfig i2ccfg = {
                            OPMODE_I2C,
-                           100000,
-                           STD_DUTY_CYCLE
-                           //FAST_DUTY_CYCLE_16_9
+                           400000,
+                           //STD_DUTY_CYCLE
+                           FAST_DUTY_CYCLE_16_9
                           };
 
-/*
- * BMP085
- */
-static float barometric_altitude=0;
-//static float sonar_altitude=0;
-int temperature = 0;
-int pressure = 0;
+/* MS561101BA */
+#define MS561101BA_ADDR 0x77
 
-//#define bmp085_addr 0b1110111
-//#define bmp085_addr 0xee
-#define bmp085_addr 0x77
+#define MS561101BA_RESET    0x1E  // ADC reset command 
+#define MS561101BA_ADC_READ 0x00  // ADC read command 
+#define MS561101BA_ADC_CONV 0x40  // ADC conversion command 
+#define MS561101BA_ADC_D1   0x00  // ADC D1 conversion 
+#define MS561101BA_ADC_D2   0x10  // ADC D2 conversion 
+#define MS561101BA_ADC_256  0x00  // ADC OSR=256 
+#define MS561101BA_ADC_512  0x02  // ADC OSR=512 
+#define MS561101BA_ADC_1024 0x04  // ADC OSR=1024 
+#define MS561101BA_ADC_2048 0x06  // ADC OSR=2048 
+#define MS561101BA_ADC_4096 0x08  // ADC OSR=4096 
+#define MS561101BA_PROM_RD  0xA0  // Prom read command
 
-static struct {
-                short ac1;
-                short ac2;
-                short ac3;
-                unsigned short ac4;
-                unsigned short ac5;
-                unsigned short ac6;
-                short b1;
-                short b2;
-                short mb;
-                short mc;
-                short md;
-} BMP085_cfg;
-//static float pressure_0=1;
-const unsigned char bmp085_oversampling = 3;
-const unsigned int bmp085_pressure_waittime[4] = { 5, 8, 14, 26 };
+uint16_t C[8];   // calibration coefficients
 
-short bmp085ReadShort (unsigned char addr) {
-  uint8_t raw[2];
-  short data;
-  msg_t status = RDY_OK;
-  static i2cflags_t errors = 0;
+void ms5611_reset(void);
+uint32_t ms5611_adc(uint8_t cmd);
+uint16_t ms5611_prom(int8_t coef_num);
+uint8_t ms5611_crc4(uint16_t n_prom[]);
 
-  //outln("AQUI3");
-  status = i2cMasterTransmit(&I2CD1, bmp085_addr, &addr, 1, raw, 2);
-  //outln("AQUI4");
-  if (status != RDY_OK){
-    errors = i2cGetErrors(&I2CD1);
-	out("Error:");
-	outln((char *)errors);
+void ms5611_reset(void) {
+	txbuf[0] = MS561101BA_RESET;
+	i2cMasterTransmit(&I2CD1, MS561101BA_ADDR, txbuf, 1, rxbuf, 0);
+	chThdSleepMilliseconds(3);
+}
+
+uint32_t ms5611_adc(uint8_t cmd) {
+	uint32_t temp=0;
+	txbuf[0] = MS561101BA_ADC_CONV + cmd;
+	i2cMasterTransmit(&I2CD1, MS561101BA_ADDR, txbuf, 1, rxbuf, 0); // send conversion command
+	switch (cmd & 0x0f) {    // wait necessary conversion time
+		case MS561101BA_ADC_256 : chThdSleepMicroseconds(900); break;
+		case MS561101BA_ADC_512 : chThdSleepMilliseconds(3);   break;
+		case MS561101BA_ADC_1024: chThdSleepMilliseconds(4);   break;
+		case MS561101BA_ADC_2048: chThdSleepMilliseconds(6);   break;
+		case MS561101BA_ADC_4096: chThdSleepMilliseconds(10);  break;
+	}
+	
+	txbuf[0] = MS561101BA_ADC_READ;
+	i2cMasterTransmit(&I2CD1, MS561101BA_ADDR, txbuf, 1, rxbuf, 3); // read ADC
+	
+	temp = 65536*rxbuf[0]; // read MSB
+	temp = temp+256*rxbuf[1]; // read byte
+	temp = temp+rxbuf[2]; // read LSB and not acknowledge
+	
+	return temp;
+}
+
+uint16_t ms5611_prom(int8_t coef_num) {
+	uint16_t rC=0;
+	
+	txbuf[0] = MS561101BA_PROM_RD+coef_num*2;
+	i2cMasterTransmit(&I2CD1, MS561101BA_ADDR, txbuf, 1, rxbuf, 2); // send PROM READ command
+	rC=256*rxbuf[0]; // read MSB
+	rC=rC+rxbuf[1]; // read LSB
+	return rC;
+}
+
+uint8_t ms5611_crc4(uint16_t n_prom[]) {
+	int cnt;     // simple counter
+	unsigned int n_rem;    // crc reminder
+	unsigned int crc_read;   // original value of the crc
+	unsigned char  n_bit;
+	n_rem = 0x00;
+	crc_read=n_prom[7];    //save read CRC
+	n_prom[7]=(0xFF00 & (n_prom[7]));  //CRC byte is replaced by 0
+	for (cnt = 0; cnt < 16; cnt++) {     // operation is performed on bytes
+     									// choose LSB or MSB
+		if (cnt%2==1) n_rem ^= (unsigned short) ((n_prom[cnt>>1]) & 0x00FF);
+  		else n_rem ^= (unsigned short) (n_prom[cnt>>1]>>8);
+        for (n_bit = 8; n_bit > 0; n_bit--) {
+			if (n_rem & (0x8000)) {
+				n_rem = (n_rem << 1) ^ 0x3000;
+			} else {
+				n_rem = (n_rem << 1);
+			}
+		}
+	}
+	n_rem = (0x000F & (n_rem >> 12));  // final 4-bit reminder is CRC code
+	n_prom[7]=crc_read;   // restore the crc_read to its original place
+	return (n_rem ^ 0x0);
+}
+
+static WORKING_AREA(waThreadBaro, 512);
+static msg_t ThreadBaro(void *arg) {
+	(void)arg;
+	while (TRUE) {
+		uint32_t D1;    // ADC value of the pressure conversion 
+		uint32_t D2;    // ADC value of the temperature conversion
+		int64_t dT;   // difference between actual and measured temperature 
+		int64_t OFF;   // offset at actual temperature 
+		int64_t SENS;   // sensitivity at actual temperature
+		D1=0;
+		D2=0;
+		i2cAcquireBus(&I2CD1);
+		D2=ms5611_adc(MS561101BA_ADC_D2+MS561101BA_ADC_4096);   // read D2 
+		D1=ms5611_adc(MS561101BA_ADC_D1+MS561101BA_ADC_4096);   // read D1
+		i2cReleaseBus(&I2CD1);
+
+		//chprintf((BaseChannel *)&SD1, "Uncompensated Temperature: %d\r\n", D2);
+		//chprintf((BaseChannel *)&SD1, "Uncompensated Pressure: %d\r\n", D1);
+
+		// calculate 1st order pressure and temperature (MS5607 1st order algorithm)
+		dT = D2 - ((uint64_t)C[5] << 8);
+		OFF  = ((int64_t)C[2] << 16) + ((dT * C[4]) >> 7);
+		SENS = ((int32_t)C[1] << 15) + ((dT * C[3]) >> 8);
+
+		T = 2000 + dT * C[6]/8388608;
+		P = (D1 * SENS/2097152 - OFF)/32768;
+
+		if (T < 2000) { // calculate 2nd order pressure and temperature (MS5607 2nd order algorithm)
+			int32_t T1    = 0;
+			int64_t OFF1  = 0;
+			int64_t SENS1 = 0;
+
+			T1    = pow(dT, 2) / 2147483648;
+			OFF1  = 5 * pow((T - 2000), 2) / 2;
+			SENS1 = 5 * pow((T - 2000), 2) / 4;
+
+			if(T < -1500) {
+				OFF1  = OFF1 + 7 * pow((T + 1500), 2); 
+				SENS1 = SENS1 + 11 * pow((T + 1500), 2) / 2;
+			}
+
+			T -= T1;
+			OFF -= OFF1; 
+			SENS -= SENS1;
+		}
+
+		float pressure, temperature;
+		float altitude;
+		pressure = P/100;
+		temperature = T/100;
+		altitude = ((pow((SEA_LEVEL_PRESSURE / pressure), 1/5.257) - 1.0) * (temperature + 273.15)) / 0.0065;
+		ALT = altitude * 100;
+		
+		chprintf((BaseChannel *)&SD1, "Temperature: %d\r\n", T);
+		chprintf((BaseChannel *)&SD1, "Pressure: %d\r\n", P);
+		chprintf((BaseChannel *)&SD1, "Altitude: %d\r\n", ALT);
+		
+		chThdSleepMilliseconds(500);
+	}
 	
 	return 0;
-  } else {
-	data = (raw[0] << 8) + raw[1];
-    //out("Read:");
-    //outInt(data, 10000);
-    //outln("");
-	return data;
-  }
 }
 
-unsigned short bmp085ReadTemp (void) {
-  unsigned char data[2] = {0xf4, 0x2e};
-
-  //outln("AQUI1");
-  i2cMasterTransmit(&I2CD1, bmp085_addr, data, 2, NULL, 0);
-  //outln("AQUI2");
-  chThdSleepMilliseconds(5);
-  
-  return bmp085ReadShort(0xf6);
+static WORKING_AREA(waThreadIMU, 256);
+static msg_t ThreadIMU(void *arg) {
+	(void)arg;
+	while (TRUE) {
+		i2cAcquireBus(&I2CD1);
+		mpu_i2c_read_data(0x3B, 14); /* Read accelerometer, temperature and gyro data */
+		i2cReleaseBus(&I2CD1);
+		chThdSleepMilliseconds(500);
+	}
+	
+	return 0;
 }
-
-int bmp085ReadPressure (void) {
-  unsigned char data[2] = {0xf4, 0x34+(bmp085_oversampling<<6)};
-  unsigned char addr;
-  uint8_t raw[3];
-  msg_t status = RDY_OK;
-  static i2cflags_t errors = 0;
-
-  status = i2cMasterTransmit(&I2CD1, bmp085_addr, data, 2, NULL, 0);
-  if (status != RDY_OK){
-    errors = i2cGetErrors(&I2CD1);
-	out("Error Pressure 1:");
-	outln((char *)errors);
-  }
-  chThdSleepMilliseconds(bmp085_pressure_waittime[bmp085_oversampling]);
-
-  /*  
-  addr = 0xf6;
-  i2cMasterTransmit(&I2CD1, 0xee, &addr, 1, NULL, 0);
-  i2cMasterReceive(&I2CD1, 0xee, &raw[0], 1);
-  addr = 0xf7;
-  i2cMasterTransmit(&I2CD1, 0xee, &addr, 1, NULL, 0);
-  i2cMasterReceive(&I2CD1, 0xee, &raw[1], 1);
-  addr = 0xf8;
-  i2cMasterTransmit(&I2CD1, 0xee, &addr, 1, NULL, 0);
-  i2cMasterReceive(&I2CD1, 0xee, &raw[2], 1);
-  */
-  addr = 0xf6;
-  status = i2cMasterTransmit(&I2CD1, bmp085_addr, &addr, 1, raw, 3);
-  if (status != RDY_OK){
-    errors = i2cGetErrors(&I2CD1);
-	out("Error Pressure 2:");
-	outln((char *)errors);
-  }
-
-  return (int)(((int)raw[0]<<16) | ((int)raw[1]<<8) | ((int)raw[2]))>>(8-bmp085_oversampling);
-}
-
-void bmp085ReadTemperaturePressure (int* temperature, int* pressure) {
-  int ut = bmp085ReadTemp();
-  int up = bmp085ReadPressure();
-
-  int x1, x2, x3, b3, b5, b6, p;
-  unsigned int b4, b7;
-
-  //calculate the temperature
-  x1 = ((int)ut - BMP085_cfg.ac6) * BMP085_cfg.ac5 >> 15;
-  x2 = ((int)BMP085_cfg.mc << 11) / (x1 + BMP085_cfg.md);
-  b5 = x1 + x2;
-  *temperature = (b5 + 8) >> 4;
-
-  //calculate the pressure
-  b6 = b5 - 4000;
-  x1 = (BMP085_cfg.b2 * (b6 * b6 >> 12)) >> 11;
-  x2 = BMP085_cfg.ac2 * b6 >> 11;
-  x3 = x1 + x2;
-
-  if (bmp085_oversampling == 3) b3 = ((int32_t)BMP085_cfg.ac1 * 4 + x3 + 2) << 1;
-  if (bmp085_oversampling == 2) b3 = ((int32_t)BMP085_cfg.ac1 * 4 + x3 + 2);
-  if (bmp085_oversampling == 1) b3 = ((int32_t)BMP085_cfg.ac1 * 4 + x3 + 2) >> 1;
-  if (bmp085_oversampling == 0) b3 = ((int32_t)BMP085_cfg.ac1 * 4 + x3 + 2) >> 2;
-
-  x1 = BMP085_cfg.ac3 * b6 >> 13;
-  x2 = (BMP085_cfg.b1 * (b6 * b6 >> 12)) >> 16;
-  x3 = ((x1 + x2) + 2) >> 2;
-  b4 = (BMP085_cfg.ac4 * (uint32_t) (x3 + 32768)) >> 15;
-  b7 = ((uint32_t)up - b3) * (50000 >> bmp085_oversampling);
-  p = b7 < 0x80000000 ? (b7 * 2) / b4 : (b7 / b4) * 2;
-
-  x1 = (p >> 8) * (p >> 8);
-  x1 = (x1 * 3038) >> 16;
-  x2 = (-7357 * p) >> 16;
-  *pressure = p + ((x1 + x2 + 3791) >> 4);
-}
-//static float BAR_ALT_SMOOTHING = 0.95;
-
-/*
-static WORKING_AREA(wa_BMP085_Thread, 512);
-__attribute__((noreturn))
-static msg_t BMP085_Thread(void *arg) {
-  (void)arg;
-  while (1) {
-    i2cAcquireBus(&I2CD1);
-    bmp085ReadTemperaturePressure(&temperature, &pressure);
-    i2cReleaseBus(&I2CD1);
-    barometric_altitude = BAR_ALT_SMOOTHING*barometric_altitude + (1-BAR_ALT_SMOOTHING)*(-44330.0*((float)pressure/pressure_0-1.0)*(1.0/5.255));
-    //if (sonar_altitude>0.5 && sonar_altitude<5.0) { // baro alt seems to drift, adjust p0
-    //  float dp0 = ((float)pressure)/(1-sonar_altitude*5.255/44300.0) - pressure_0;
-    //  pressure_0 += 0.1*dp0;
-    //}
-    chThdSleepMilliseconds(1);
-  }
-}
-*/
 
 /*
  * Red LED blinker thread, times are in milliseconds.
  * GPIOB,1 is the LED on the Maple Mini
  */
-static WORKING_AREA(waThread1, 1024);
-static msg_t Thread1(void *arg) {
-
-  (void)arg;
-  while (TRUE) {
-    palClearPad(GPIOB, 1);
-    chThdSleepMilliseconds(500);
-    palSetPad(GPIOB, 1);
-    chThdSleepMilliseconds(500);
-
-	//temperature = bmp085ReadTemp();
-	//pressure = bmp085ReadPressure();
-	i2cAcquireBus(&I2CD1);
-	bmp085ReadTemperaturePressure(&temperature, &pressure);
-	i2cReleaseBus(&I2CD1);
-
-    int x1, x2, x3, b3, b5, b6, p;
-    unsigned int b4, b7;
-
-    //calculate the temperature
-    x1 = ((int)temperature - BMP085_cfg.ac6) * BMP085_cfg.ac5 >> 15;
-    x2 = ((int)BMP085_cfg.mc << 11) / (x1 + BMP085_cfg.md);
-    b5 = x1 + x2;
-    temperature = (b5 + 8) >> 4;
-
-    //calculate the pressure
-    b6 = b5 - 4000;
-    x1 = (BMP085_cfg.b2 * (b6 * b6 >> 12)) >> 11;
-    x2 = BMP085_cfg.ac2 * b6 >> 11;
-    x3 = x1 + x2;
-
-    if (bmp085_oversampling == 3) b3 = ((int32_t)BMP085_cfg.ac1 * 4 + x3 + 2) << 1;
-    if (bmp085_oversampling == 2) b3 = ((int32_t)BMP085_cfg.ac1 * 4 + x3 + 2);
-    if (bmp085_oversampling == 1) b3 = ((int32_t)BMP085_cfg.ac1 * 4 + x3 + 2) >> 1;
-    if (bmp085_oversampling == 0) b3 = ((int32_t)BMP085_cfg.ac1 * 4 + x3 + 2) >> 2;
-
-    x1 = BMP085_cfg.ac3 * b6 >> 13;
-    x2 = (BMP085_cfg.b1 * (b6 * b6 >> 12)) >> 16;
-    x3 = ((x1 + x2) + 2) >> 2;
-    b4 = (BMP085_cfg.ac4 * (uint32_t) (x3 + 32768)) >> 15;
-    b7 = ((uint32_t)pressure - b3) * (50000 >> bmp085_oversampling);
-    p = b7 < 0x80000000 ? (b7 * 2) / b4 : (b7 / b4) * 2;
-
-    x1 = (p >> 8) * (p >> 8);
-    x1 = (x1 * 3038) >> 16;
-    x2 = (-7357 * p) >> 16;
-    pressure = p + ((x1 + x2 + 3791) >> 4);
-
-    //barometric_altitude = BAR_ALT_SMOOTHING*barometric_altitude + (1-BAR_ALT_SMOOTHING)*(-44330.0*((float)pressure/pressure_0-1.0)*(1.0/5.255));
-    //barometric_altitude = 44330 * (1.0 - pow(pressure / 101325, 0.1903)); //101325=sealevelpressure
-    float A = (float)pressure/101325;
-	float B = 1/5.25588;
-	float C = pow(A,B);
-	C = 1 - C;
-	C = C /0.0000225577;
-	barometric_altitude = C;
-
-	out("Altitude:");
-    outInt(barometric_altitude, 100000);
-    outln("");
-
-    out("Pressure:");
-    outInt(pressure, 100000);
-    outln("");
-
-    out("Temperature:");
-    outInt(temperature, 100000);
-    outln("");
-
-    /*
-     * EEPROM Read Test
-     */
-#define eeprom_split_addr(txbuf, addr){                                       \
-  (txbuf)[0] = ((uint8_t)((addr >> 8) & 0xFF));                               \
-  (txbuf)[1] = ((uint8_t)(addr & 0xFF));                                      \
-}
-    int i = 0;
-    uint8_t data[1];
-    uint8_t localtxbuf[2];
-    outln("EEPROM Read...");
-    EepromOpen(&Efs);
-    chFileStreamSeek(&Efs, 0);
-    chThdSleepMilliseconds(50);
-    for (i=0; i<128; i++) {
-      //data = EepromReadByte(&Efs);
-      eeprom_split_addr(localtxbuf, i);
-outln("AQUI1");
-      i2cAcquireBus(&I2CD1);
-outln("AQUI2");
-      i2cMasterTransmit(&I2CD1, 0b1010000, localtxbuf, 2, data, 1);
-outln("AQUI3");
-	  i2cReleaseBus(&I2CD1);
-outln("AQUI4");
-      outInt(data[0], 100);
-      out(" ");
-    }
-    outln("");
-    chFileStreamClose(&Efs);
-  }
-
-  return 0;
+static WORKING_AREA(waThreadLed, 128);
+static msg_t ThreadLed(void *arg) {
+	(void)arg;
+	while (TRUE) {
+		palClearPad(GPIOB, 1);
+		chThdSleepMilliseconds(500);
+		palSetPad(GPIOB, 1);
+		chThdSleepMilliseconds(500);
+	}
+	
+	return 0;
 }
 
 /*
  * Application entry point.
  */
 int main(void) {
+	/*
+	 * System initializations.
+	 * - HAL initialization, this also initializes the configured device drivers
+	 *   and performs the board-specific initializations.
+	 * - Kernel initialization, the main() function becomes a thread and the
+	 *   RTOS is active.
+	 */
+	halInit();
+	chSysInit();
 
-  /*
-   * System initializations.
-   * - HAL initialization, this also initializes the configured device drivers
-   *   and performs the board-specific initializations.
-   * - Kernel initialization, the main() function becomes a thread and the
-   *   RTOS is active.
-   */
-  halInit();
-  chSysInit();
+	/*
+	 * Activates the serial driver 1 using the driver default configuration.
+	 */
+	sdStart(&SD1, NULL);
+	sdWrite(&SD1, (uint8_t *)"Trunetcopter\r\n", 14);
 
-  /*
-   * Activates the serial driver 1 using the driver default configuration.
-   */
-  sdStart(&SD1, NULL);
-  sdWrite(&SD1, (uint8_t *)"Trunetcopter\r\n", 14);
+	/*
+	 * I2C Initiliazation
+	 */
+	i2cInit();
+	chThdSleepMilliseconds(20);
+	i2cStart(&I2CD1, &i2ccfg);
 
-  /*
-   * I2C Initiliazation
-   */
-  i2cInit();
-  chThdSleepMilliseconds(10);
-  i2cStart(&I2CD1, &i2ccfg);
+	/*
+	 * Set I2C1 ports to opendrain
+	 */
+	palSetPadMode(GPIOB, 6, PAL_MODE_STM32_ALTERNATE_OPENDRAIN);
+	palSetPadMode(GPIOB, 7, PAL_MODE_STM32_ALTERNATE_OPENDRAIN);
 
-  palSetPadMode(GPIOB, 6, PAL_MODE_STM32_ALTERNATE_OPENDRAIN);
-  palSetPadMode(GPIOB, 7, PAL_MODE_STM32_ALTERNATE_OPENDRAIN);
+	/*
+	 * MPU6050 Initialization
+	 */
+	set_mpu_sample_rate(9);
+	set_mpu_config_regsiter(EXT_SYNC_SET0, DLPF_CFG0);
+	set_mpu_gyro(XG_ST_DIS, YG_ST_DIS, ZG_ST_DIS, FS_SEL_250);
+	set_mpu_accel(XA_ST_DIS, YA_ST_DIS, ZA_ST_DIS, AFS_SEL_2g, ACCEL_HPF0);
+	set_mpu_power_mgmt1(DEVICE_RESET_DIS, SLEEP_DIS, CYCLE_DIS, TEMPERATURE_EN, CLKSEL_XG);
+	set_mpu_user_control(USER_FIFO_DIS, I2C_MST_DIS, I2C_IF_DIS, FIFO_RESET_DIS, I2C_MST_RESET_DIS, SIG_COND_RESET_DIS);
 
-  /*
-   * BMP085 Initialization
-   */
-  chThdSleepMilliseconds(20); //(datasheet 10 ms)
-  i2cAcquireBus(&I2CD1);
-  BMP085_cfg.ac1 = bmp085ReadShort(0xaa);
-  BMP085_cfg.ac2 = bmp085ReadShort(0xac);
-  BMP085_cfg.ac3 = bmp085ReadShort(0xae);
-  BMP085_cfg.ac4 = bmp085ReadShort(0xb0);
-  BMP085_cfg.ac5 = bmp085ReadShort(0xb2);
-  BMP085_cfg.ac6 = bmp085ReadShort(0xb4);
-  BMP085_cfg.b1 = bmp085ReadShort(0xb6);
-  BMP085_cfg.b2 = bmp085ReadShort(0xb8);
-  BMP085_cfg.mb = bmp085ReadShort(0xba);
-  BMP085_cfg.mc = bmp085ReadShort(0xbc);
-  BMP085_cfg.md = bmp085ReadShort(0xbe);
-  i2cReleaseBus(&I2CD1);
+	write_mpu_power_mgmt1();
+	write_mpu_gyro();
+	write_mpu_accel();
+	write_mpu_sample_rate();
 
-  /*
-   * EEPROM Write Test
-   */
-  int i = 0;
-  outln("EEPROM Write...");
-  EepromOpen(&Efs);
-  chFileStreamSeek(&Efs, 0);
-  for (i=0; i<128; i++) {
-        if (EepromWriteByte(&Efs, (uint8_t)i) != sizeof(uint8_t))
-      outln("write failed");
-  }
-  chFileStreamClose(&Efs);
+	/*
+	 * MS561101BA Initialization
+	 */
+	int i;
+	uint8_t n_crc; // crc value of the prom
+	ms5611_reset(); // reset IC
+	for (i=0;i<8;i++){
+		C[i]=ms5611_prom(i);
+		chprintf((BaseChannel *)&SD1, "C%d: %d\r\n", i, C[i]);
+	} // read coefficients 
+	n_crc=ms5611_crc4(C); // calculate the CRC
+	if (n_crc == 0) {
+		chprintf((BaseChannel *)&SD1, "MS5611 CRC OK - Calculated: %x\r\n", C[7]);
+	} else {
+		chprintf((BaseChannel *)&SD1, "MS5611 CRC NOT OK - Calculate: %x\r\n", C[7]);
+	}
 
-  /*
-   * Creates the blinker thread.
-   */
-  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
+	/*
+	 * Creates the threads.
+	 */
+	chThdCreateStatic(waThreadBaro, sizeof(waThreadBaro), NORMALPRIO, ThreadBaro, NULL);
+	chThdCreateStatic(waThreadIMU, sizeof(waThreadIMU), NORMALPRIO, ThreadIMU, NULL);
+	chThdCreateStatic(waThreadLed, sizeof(waThreadLed), NORMALPRIO, ThreadLed, NULL);
 
-  /*
-   * Create the BMP085 thread.
-   */
-  //chThdCreateStatic(wa_BMP085_Thread, sizeof(wa_BMP085_Thread), LOWPRIO, BMP085_Thread, NULL);
-
-  return 0;
+	return 0;
 }
