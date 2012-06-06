@@ -246,9 +246,9 @@ void mpu_i2c_read_data(uint8_t addr, uint8_t length){
  */
 #ifdef MPU_DEBUG
 	int16_t val[10];
+	float temp;
+	float offset;
 #endif
-	long temp;
-
 	mpu_txbuf[0] = addr;
 	for(i=0;i<length;i++)mpu_rxbuf[i] = 0x00;
 	i2cMasterTransmit(&I2C_MPU, MPU_ADDR, mpu_txbuf, 1, mpu_rxbuf, length);
@@ -257,8 +257,10 @@ void mpu_i2c_read_data(uint8_t addr, uint8_t length){
 	val[1] = complement2signed(mpu_rxbuf[2], mpu_rxbuf[3]);
 	val[2] = complement2signed(mpu_rxbuf[4], mpu_rxbuf[5]);
 	//val[3] = complement2signed(mpu_rxbuf[6], mpu_rxbuf[7]); // TEMPERATURE
-	//val[3] = (mpu_rxbuf[6] << 8) + mpu_rxbuf[7];
-	temp = (-521 + ((mpu_rxbuf[6] << 8) + mpu_rxbuf[7])) * 340;
+	val[3] = (mpu_rxbuf[6] << 8) + mpu_rxbuf[7];
+	//temp = (-521 + ((mpu_rxbuf[6] << 8) + mpu_rxbuf[7])) * 340;
+	offset =  35 + (-521/340);
+	temp = ( (val[3]/100) / 340) + offset;
 	val[4] = complement2signed(mpu_rxbuf[8], mpu_rxbuf[9]);
 	val[5] = complement2signed(mpu_rxbuf[10], mpu_rxbuf[11]);
 	val[6] = complement2signed(mpu_rxbuf[12], mpu_rxbuf[13]);

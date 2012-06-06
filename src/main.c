@@ -21,6 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 /* ChibiOS includes */
 #include "ch.h"
 #include "hal.h"
+#include "chprintf.h"
 
 /* ARM includes */
 #include "math.h"
@@ -36,6 +37,7 @@ int32_t T;   // compensated temperature value
 #define SEA_LEVEL_PRESSURE 1020.00
 int32_t ALT; // calculated altitude
 
+/*
 static
 void out(char *msg)
 {
@@ -69,6 +71,7 @@ void outln(char *msg)
     chIOPut(&SD1, '\r');
     chThdSleepMilliseconds(10);
 }
+*/
 
 /*
  * I2C
@@ -197,7 +200,7 @@ static msg_t ThreadBaro(void *arg) {
 			int64_t OFF1  = 0;
 			int64_t SENS1 = 0;
 
-			T1    = pow(dT, 2) / 2147483648;
+			T1    = pow(dT, 2) / 2147483648u;
 			OFF1  = 5 * pow((T - 2000), 2) / 2;
 			SENS1 = 5 * pow((T - 2000), 2) / 4;
 
