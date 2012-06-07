@@ -344,7 +344,8 @@ void write_mpu_gyro(void);
 void write_mpu_accel(void);
 void write_mpu_power_mgmt1(void);
 void write_mpu_user_control(void);
+void write_mpu_int_cfg(void);
 void mpu_i2c_write(uint8_t addr, uint8_t value);
-void mpu_i2c_read_data(uint8_t addr, uint8_t length);
+void mpu_i2c_read_data(uint8_t addr, uint8_t length, int16_t *ax, int16_t *ay, int16_t *az, int16_t *gx, int16_t *gy, int16_t *gz);
 void mpu_who_am_i(void);
 #endif /* MPU60X0_H_ */

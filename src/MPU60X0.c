@@ -7,9 +7,10 @@
 
 #include "ch.h"
 #include "hal.h"
+#include "chprintf.h"
 #include "MPU60X0.h"
 
-#define MPU_DEBUG
+//#define MPU_DEBUG
 #define OUTPUT 		SD1
 
 uint8_t smplrt_div= 0, mpu_config = 0, gyro_config = 0, accel_config = 0, fifo_enable = 0x00;
@@ -19,6 +20,18 @@ uint8_t power_mgmt1 = 0x00, power_mgmt2  = 0x00, aux_vddio = 0x00;
 #ifdef MPU_DEBUG
 uint8_t debug_var = 0x00;
 #endif
+
+/**
+ * @brief     Calculates requred timeout.
+ */
+static systime_t calc_timeout(I2CDriver *i2cp, size_t txbytes, size_t rxbytes){
+  const uint32_t bitsinbyte = 10;
+  uint32_t tmo;
+  tmo = ((txbytes + rxbytes + 1) * bitsinbyte * 1000);
+  tmo /= i2cp->config->clock_speed;
+  tmo += 5; /* some additional time to be safer */
+  return MS2ST(tmo);
+}
 
 /*
  * This function defines value for SMPRT_DIV register.
@@ -209,17 +222,38 @@ void write_mpu_user_control(void){
 }
 
 /*
+ * This function writes value of int_pin_config into INT_PIN_CFG register.
+ */
+void write_mpu_int_cfg(void){
+	//uint8_t mpu_txbuf[1], mpu_rxbuf[1];
+	//systime_t tmo = calc_timeout(&I2C_MPU, 1, 1);
+	
+	//mpu_txbuf[0] = INT_PIN_CFG;
+	//i2cMasterTransmitTimeout(&I2C_MPU, MPU_ADDR, mpu_txbuf, 1, mpu_rxbuf, 1, tmo);
+	//chprintf((BaseChannel *)&OUTPUT,"INT_PIN_CFG Before: %x\r\n", mpu_rxbuf[0]);
+	
+	//chThdSleepMilliseconds(5);
+	
+	//int_pin_config = (mpu_rxbuf[0] | (1 << 1));
+	//chprintf((BaseChannel *)&OUTPUT,"INT_PIN_CFG After: %x\r\n", int_pin_config);
+	int_pin_config = 0b00000010;
+	mpu_i2c_write(INT_PIN_CFG, int_pin_config);
+}
+
+/*
  * Call to ChibiOS I2C function.
  */
 void mpu_i2c_write(uint8_t addr, uint8_t value){
 	uint8_t mpu_txbuf[10], mpu_rxbuf[10];
+	systime_t tmo = calc_timeout(&I2C_MPU, 2, 0);
 	mpu_txbuf[0] = addr;
 	mpu_txbuf[1] = value;
 #ifdef MPU_DEBUG
 	chprintf((BaseChannel *)&OUTPUT,"Address: %x Value: %x\r\n", mpu_txbuf[0],mpu_txbuf[1]);
 #endif
-	i2cMasterTransmit(&I2C_MPU, MPU_ADDR, mpu_txbuf, 2, mpu_rxbuf, 0);
-	chThdSleepMilliseconds(10);
+	i2cMasterTransmitTimeout(&I2C_MPU, MPU_ADDR, mpu_txbuf, 2, mpu_rxbuf, 0, tmo);
+	//i2cMasterTransmit(&I2C_MPU, MPU_ADDR, mpu_txbuf, 2, mpu_rxbuf, 0);
+	//chThdSleepMilliseconds(10);
 }
 
 int16_t complement2signed(uint8_t msb, uint8_t lsb){
@@ -237,8 +271,9 @@ int16_t complement2signed(uint8_t msb, uint8_t lsb){
 /*
  * This function reads data from MPU60X0. Input is register address and lenght of buffer to be read.
  */
-void mpu_i2c_read_data(uint8_t addr, uint8_t length){
+void mpu_i2c_read_data(uint8_t addr, uint8_t length, int16_t *ax, int16_t *ay, int16_t *az, int16_t *gx, int16_t *gy, int16_t *gz){
 	uint8_t mpu_txbuf[20], mpu_rxbuf[20], i = 0;
+	systime_t tmo = calc_timeout(&I2C_MPU, 1, length);
 
 /*
  * Currently MPU_DEBUG defined in this function is to output value of accelerometer and gyro only.
@@ -251,7 +286,13 @@ void mpu_i2c_read_data(uint8_t addr, uint8_t length){
 #endif
 	mpu_txbuf[0] = addr;
 	for(i=0;i<length;i++)mpu_rxbuf[i] = 0x00;
-	i2cMasterTransmit(&I2C_MPU, MPU_ADDR, mpu_txbuf, 1, mpu_rxbuf, length);
+	i2cMasterTransmitTimeout(&I2C_MPU, MPU_ADDR, mpu_txbuf, 1, mpu_rxbuf, length, tmo);
+	*ax = complement2signed(mpu_rxbuf[0], mpu_rxbuf[1]);
+	*ay = complement2signed(mpu_rxbuf[2], mpu_rxbuf[3]);
+	*az = complement2signed(mpu_rxbuf[4], mpu_rxbuf[5]);
+	*gx = complement2signed(mpu_rxbuf[8], mpu_rxbuf[9]);
+	*gy = complement2signed(mpu_rxbuf[10], mpu_rxbuf[11]);
+	*gz = complement2signed(mpu_rxbuf[12], mpu_rxbuf[13]);
 #ifdef MPU_DEBUG
 	val[0] = complement2signed(mpu_rxbuf[0], mpu_rxbuf[1]);
 	val[1] = complement2signed(mpu_rxbuf[2], mpu_rxbuf[3]);
@@ -259,8 +300,10 @@ void mpu_i2c_read_data(uint8_t addr, uint8_t length){
 	//val[3] = complement2signed(mpu_rxbuf[6], mpu_rxbuf[7]); // TEMPERATURE
 	val[3] = (mpu_rxbuf[6] << 8) + mpu_rxbuf[7];
 	//temp = (-521 + ((mpu_rxbuf[6] << 8) + mpu_rxbuf[7])) * 340;
-	offset =  35 + (-521/340);
-	temp = ( (val[3]/100) / 340) + offset;
+	//offset =  35 + ( -521 / 340 );
+	offset = 33.4676470589;
+	//offset = 36.5323;
+	temp = (float)(val[3]) / 340 + offset;
 	val[4] = complement2signed(mpu_rxbuf[8], mpu_rxbuf[9]);
 	val[5] = complement2signed(mpu_rxbuf[10], mpu_rxbuf[11]);
 	val[6] = complement2signed(mpu_rxbuf[12], mpu_rxbuf[13]);
@@ -278,7 +321,7 @@ void mpu_i2c_read_data(uint8_t addr, uint8_t length){
 	chprintf((BaseChannel *)&OUTPUT, "MPU values are:");
 	for(i=0;i<7;i++){
 		if (i==3) {
-			chprintf((BaseChannel *)&OUTPUT, "\t%ld ", temp);
+			chprintf((BaseChannel *)&OUTPUT, "\t%f ", temp);
 		} else {
 			chprintf((BaseChannel *)&OUTPUT, "\t%d ", val[i]);
 		}
@@ -291,9 +334,10 @@ void mpu_i2c_read_data(uint8_t addr, uint8_t length){
 void mpu_who_am_i() {
 	uint8_t ack;
 	uint8_t mpu_txbuf[1], mpu_rxbuf[1];
+	systime_t tmo = calc_timeout(&I2C_MPU, 1, 1);
 	
 	mpu_txbuf[0] = WHO_AM_I;
-	ack = i2cMasterTransmit(&I2C_MPU, MPU_ADDR, mpu_txbuf, 1, mpu_rxbuf, 1);
+	ack = i2cMasterTransmitTimeout(&I2C_MPU, MPU_ADDR, mpu_txbuf, 1, mpu_rxbuf, 1, tmo);
 	if (ack) {
 		chprintf((BaseChannel *)&OUTPUT, "+ACK|");
 	} else {
