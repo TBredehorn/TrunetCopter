@@ -80,6 +80,10 @@ CSRC = $(PORTSRC) \
        $(CHIBIOS)/os/various/evtimer.c \
        $(CHIBIOS)/os/various/syscalls.c \
        $(CHIBIOS)/os/various/chprintf.c \
+       $(CHIBIOS)/os/various/chrtclib.c \
+       $(CHIBIOS)/os/various/memstreams.c \
+       $(wildcard src/eeprom/*.c) \
+       $(wildcard src/sensors/*.c) \
        $(wildcard src/*.c)
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
@@ -211,4 +215,4 @@ endif
 include $(CHIBIOS)/os/ports/GCC/ARMCMx/rules.mk
 
 install:
-	python /Users/trunet/src/libmaple/support/stm32loader.py -p /dev/tty.usbserial-A8006AtT -eVw /Users/trunet/src/trunetcopter/build/trunetcopter.bin
+	python /Users/trunet/src/libmaple/support/stm32loader.py -p /dev/tty.usbserial-A8006AtT -eVw /Users/trunet/Documents/workspace/trunetcopter/build/trunetcopter.bin
