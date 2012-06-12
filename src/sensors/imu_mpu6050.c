@@ -16,7 +16,7 @@
 #include "imu_mpu6050.h"
 
 extern imu_data_t imu_data;
-extern Mutex mtx_imu;
+extern EventSource imu_event;
 
 uint8_t smplrt_div= 0, mpu_config = 0, gyro_config = 0, accel_config = 0, fifo_enable = 0x00;
 uint8_t int_pin_config = 0x00, int_pin_enable = 0x00, signal_path_reset = 0x00, user_control = 0x00;
@@ -276,12 +276,14 @@ static msg_t PollIMUThread(void *arg){
 	(void)arg;
 	chRegSetThreadName("PollIMU");
 
-	chThdSleepMilliseconds(100);
+	struct EventListener self_el;
+	chEvtRegister(&imu_event, &self_el, 0);
 
 	while (TRUE) {
-		chMtxLock(&mtx_imu);
+		chEvtWaitOne(EVENT_MASK(3));
 		mpu_i2c_read_data(0x3B, 14); // Read accelerometer, temperature and gyro data
-		chMtxUnlock();
+		chEvtBroadcastFlags(&imu_event, EVENT_MASK(0));
+
 	}
 	return 0;
 }

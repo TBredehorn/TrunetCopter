@@ -233,7 +233,7 @@
  * @note    Requires @p CH_USE_EVENTS.
  */
 #if !defined(CH_USE_EVENTS_TIMEOUT) || defined(__DOXYGEN__)
-#define CH_USE_EVENTS_TIMEOUT           FALSE//TRUE
+#define CH_USE_EVENTS_TIMEOUT           TRUE
 #endif
 
 /**

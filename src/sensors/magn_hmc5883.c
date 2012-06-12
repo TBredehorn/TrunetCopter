@@ -10,7 +10,7 @@
 #include "../i2c_local.h"
 
 extern imu_data_t imu_data;
-extern Mutex mtx_imu;
+extern EventSource imu_event;
 
 void hmc5883_init(void) {
 	uint8_t txbuf[2];
@@ -131,12 +131,13 @@ static msg_t PollMagnThread(void *arg){
 	(void)arg;
 	chRegSetThreadName("PollMagn");
 
-	chThdSleepMilliseconds(100);
+	struct EventListener self_el;
+	chEvtRegister(&imu_event, &self_el, 1);
 
 	while (TRUE) {
-		chMtxLock(&mtx_imu);
+		chEvtWaitOne(EVENT_MASK(0));
 		hmc5883_getValuesfloat();
-		chMtxUnlock();
+		chEvtBroadcastFlags(&imu_event, EVENT_MASK(1));
 		chThdSleepMilliseconds(15);
 	}
 	return 0;

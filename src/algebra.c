@@ -19,7 +19,7 @@ systime_t now, lastupdate;
 
 extern float q[4];
 extern imu_data_t imu_data;
-extern Mutex mtx_imu;
+extern EventSource imu_event;
 
 float invSqrt(float x) {
 	float halfx = 0.5f * x;
@@ -145,15 +145,19 @@ static WORKING_AREA(waThreadQ, 512);
 static msg_t ThreadQ(void *arg) {
 	(void)arg;
 
+	struct EventListener self_el;
+	chEvtRegister(&imu_event, &self_el, 2);
+
 	now = chTimeNow();
 	while (TRUE) {
+		chEvtWaitOne(EVENT_MASK(1));
+		//chEvtWaitAll(EVENT_MASK(0) + EVENT_MASK(1) + EVENT_MASK(2));
 		//chprintf((BaseChannel *)&SERIAL_DEBUG, "Q");
-		chMtxLock(&mtx_imu);
 
 		//now += MS2ST(100);
 		//sampleFreq = 10;
 		now = chTimeNow();
-		sampleFreq = 1.0 / ((now-lastupdate) / (CH_FREQUENCY / 1000000.0));
+		sampleFreq = 1.0 / ((now-lastupdate) / (CH_FREQUENCY / 1.0));
 		//chprintf((BaseChannel *)&SERIAL_DEBUG, "now: %d\r\n", now);
 		//chprintf((BaseChannel *)&SERIAL_DEBUG, "lastupdate: %d\r\n", lastupdate);
 		//chprintf((BaseChannel *)&SERIAL_DEBUG, "sampleFreq: %f\r\n", sampleFreq);
@@ -161,7 +165,7 @@ static msg_t ThreadQ(void *arg) {
 
 		// gyro values are expressed in deg/sec, the * M_PI/180 will convert it to radians/sec
 		AHRSupdate(imu_data.gyro_x * M_PI/180, imu_data.gyro_y * M_PI/180, imu_data.gyro_z * M_PI/180, imu_data.acc_x, imu_data.acc_y, imu_data.acc_z, imu_data.mag_x, imu_data.mag_y, imu_data.mag_z);
-		chMtxUnlock();
+		chEvtBroadcastFlags(&imu_event, EVENT_MASK(2));
 
 		//chThdSleepUntil(now);
 	}

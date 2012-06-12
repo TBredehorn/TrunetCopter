@@ -55,7 +55,7 @@ baro_data_t baro_data;
 imu_data_t imu_data;
 float q0, q1, q2, q3; // quaternion of sensor frame relative to auxiliary frame
 
-Mutex mtx_imu;
+EventSource imu_event;
 
 /* 
  * Threads
@@ -65,15 +65,16 @@ static WORKING_AREA(waThreadDebug, 256);
 static msg_t ThreadDebug(void *arg) {
 	(void)arg;
 
-	chThdSleepMilliseconds(500);
+	struct EventListener self_el;
+	chEvtRegister(&imu_event, &self_el, 3);
 
 	while (TRUE) {
-
+		chEvtWaitOneTimeout(EVENT_MASK(2), 100);
+		/*
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "Temperature: %f\r\n", baro_data.ftempms);
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "Pressure: %f\r\n", baro_data.fbaroms);
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "Altitude: %f\r\n", baro_data.faltims);
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "----------------------------------\r\n");
-		chMtxLock(&mtx_imu);
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "Accelerometer(x, y, z): %f, ", imu_data.acc_x);
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.acc_y);
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.acc_z);
@@ -88,12 +89,11 @@ static msg_t ThreadDebug(void *arg) {
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", q1);
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", q2);
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", q3);
-		chMtxUnlock();
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "==================================\r\n");
+		chEvtBroadcastFlags(&imu_event, EVENT_MASK(3));
 		chThdSleepMilliseconds(500);
+		*/
 
-		/*
-		chMtxLock(&mtx_imu);
 		uint8_t i;
 		uint8_t * b1 = (uint8_t *) &q0;
 		uint8_t * b2 = (uint8_t *) &q1;
@@ -143,13 +143,9 @@ static msg_t ThreadDebug(void *arg) {
 			sdWrite(&SERIAL_DEBUG, &c2q4, 1);
 		}
 		chprintf((BaseChannel *)&SERIAL_DEBUG, ",\r\n");
-		//chprintf((BaseChannel *)&SERIAL_DEBUG, "%f,", q0);
-		//chprintf((BaseChannel *)&SERIAL_DEBUG, "%f,", q1);
-		//chprintf((BaseChannel *)&SERIAL_DEBUG, "%f,", q2);
-		//chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", q3);
-		chMtxUnlock();
+
+		chEvtBroadcastFlags(&imu_event, EVENT_MASK(3));
 		chThdSleepMilliseconds(20);
-		*/
 	}
 
 	return 0;
@@ -200,7 +196,7 @@ int main(void) {
 	palSetPadMode(GPIOB, 6, PAL_MODE_STM32_ALTERNATE_OPENDRAIN);
 	palSetPadMode(GPIOB, 7, PAL_MODE_STM32_ALTERNATE_OPENDRAIN);
 
-	chMtxInit(&mtx_imu);
+	chEvtInit(&imu_event);
 	
 	EepromOpen(&EepromFile);
 	
