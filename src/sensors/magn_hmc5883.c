@@ -138,7 +138,6 @@ static msg_t PollMagnThread(void *arg){
 		chEvtWaitOne(EVENT_MASK(0));
 		hmc5883_getValuesfloat();
 		chEvtBroadcastFlags(&imu_event, EVENT_MASK(1));
-		chThdSleepMilliseconds(15);
 	}
 	return 0;
 }

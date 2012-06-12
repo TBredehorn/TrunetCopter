@@ -145,7 +145,7 @@ static msg_t ThreadDebug(void *arg) {
 		chprintf((BaseChannel *)&SERIAL_DEBUG, ",\r\n");
 
 		chEvtBroadcastFlags(&imu_event, EVENT_MASK(3));
-		chThdSleepMilliseconds(20);
+		//chThdSleepMilliseconds(20);
 	}
 
 	return 0;
