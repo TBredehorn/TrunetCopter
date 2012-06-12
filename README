@@ -1,8 +1,7 @@
 A ChibiOS multicopter code.
 
-Using on leaflabs maple mini board with BMP085, 24LC256, BMA020 Gyros and PPM SUM receiver.
-
-Waiting for a FreeIMU v0.4.3.
+Using on leaflabs maple mini board, FreeIMU v0.4r3,
+PPM SUM receiver and 24LC256 EEPROM.
 
 Copyright (C) 2012 Wagner Sartori Junior <wsartori@gmail.com>
 http://www.wsartori.com
