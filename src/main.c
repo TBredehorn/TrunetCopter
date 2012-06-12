@@ -215,7 +215,9 @@ int main(void) {
 	
 	EepromOpen(&EepromFile);
 	
+	chThdSleepMilliseconds(100);
 	I2CInitLocal();
+	chThdSleepMilliseconds(100);
 
 	baro_ms5611_start();
 	imu_mpu6050_start();

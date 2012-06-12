@@ -90,8 +90,6 @@ static msg_t PollBaroThread(void *arg){
 	(void)arg;
 	chRegSetThreadName("PollBaro");
 
-	chThdSleepMilliseconds(100);
-
 	while (TRUE) {
 		uint32_t D1;    // ADC value of the pressure conversion
 		uint32_t D2;    // ADC value of the temperature conversion
