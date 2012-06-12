@@ -57,6 +57,8 @@ float q0, q1, q2, q3; // quaternion of sensor frame relative to auxiliary frame
 
 EventSource imu_event;
 
+extern float sampleFreq;
+
 /* 
  * Threads
  */
@@ -95,10 +97,8 @@ static msg_t ThreadDebug(void *arg) {
 		*/
 
 		uint8_t i;
+
 		uint8_t * b1 = (uint8_t *) &q0;
-		uint8_t * b2 = (uint8_t *) &q1;
-		uint8_t * b3 = (uint8_t *) &q2;
-		uint8_t * b4 = (uint8_t *) &q3;
 		for(i=0; i<4; i++) {
 			uint8_t b1q1 = (b1[i] >> 4) & 0x0f;
 			uint8_t b2q1 = (b1[i] & 0x0f);
@@ -110,6 +110,7 @@ static msg_t ThreadDebug(void *arg) {
 			sdWrite(&SERIAL_DEBUG, &c2q1, 1);
 		}
 		chprintf((BaseChannel *)&SERIAL_DEBUG, ",");
+		uint8_t * b2 = (uint8_t *) &q1;
 		for(i=0; i<4; i++) {
 			uint8_t b1q2 = (b2[i] >> 4) & 0x0f;
 			uint8_t b2q2 = (b2[i] & 0x0f);
@@ -121,6 +122,7 @@ static msg_t ThreadDebug(void *arg) {
 			sdWrite(&SERIAL_DEBUG, &c2q2, 1);
 		}
 		chprintf((BaseChannel *)&SERIAL_DEBUG, ",");
+		uint8_t * b3 = (uint8_t *) &q2;
 		for(i=0; i<4; i++) {
 			uint8_t b1q3 = (b3[i] >> 4) & 0x0f;
 			uint8_t b2q3 = (b3[i] & 0x0f);
@@ -132,6 +134,7 @@ static msg_t ThreadDebug(void *arg) {
 			sdWrite(&SERIAL_DEBUG, &c2q3, 1);
 		}
 		chprintf((BaseChannel *)&SERIAL_DEBUG, ",");
+		uint8_t * b4 = (uint8_t *) &q3;
 		for(i=0; i<4; i++) {
 			uint8_t b1q4 = (b4[i] >> 4) & 0x0f;
 			uint8_t b2q4 = (b4[i] & 0x0f);
@@ -141,6 +144,18 @@ static msg_t ThreadDebug(void *arg) {
 
 			sdWrite(&SERIAL_DEBUG, &c1q4, 1);
 			sdWrite(&SERIAL_DEBUG, &c2q4, 1);
+		}
+		chprintf((BaseChannel *)&SERIAL_DEBUG, ",");
+		uint8_t * b5 = (uint8_t *) &sampleFreq;
+		for(i=0; i<4; i++) {
+			uint8_t b1 = (b5[i] >> 4) & 0x0f;
+			uint8_t b2 = (b5[i] & 0x0f);
+
+			uint8_t c1 = (b1 < 10) ? ('0' + b1) : 'A' + b1 - 10;
+			uint8_t c2 = (b2 < 10) ? ('0' + b2) : 'A' + b2 - 10;
+
+			sdWrite(&SERIAL_DEBUG, &c1, 1);
+			sdWrite(&SERIAL_DEBUG, &c2, 1);
 		}
 		chprintf((BaseChannel *)&SERIAL_DEBUG, ",\r\n");
 

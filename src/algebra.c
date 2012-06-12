@@ -150,8 +150,8 @@ static msg_t ThreadQ(void *arg) {
 
 	now = chTimeNow();
 	while (TRUE) {
-		chEvtWaitOne(EVENT_MASK(1));
-		//chEvtWaitAll(EVENT_MASK(0) + EVENT_MASK(1) + EVENT_MASK(2));
+		//chEvtWaitOne(EVENT_MASK(1));
+		chEvtWaitAll(EVENT_MASK(0) && EVENT_MASK(1));
 		//chprintf((BaseChannel *)&SERIAL_DEBUG, "Q");
 
 		//now += MS2ST(100);
