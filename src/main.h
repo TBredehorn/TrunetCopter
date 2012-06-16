@@ -1,14 +1,20 @@
 #ifndef MAIN_H_
 #define MAIN_H_
 
+#define SEA_LEVEL_PRESSURE 1016.00
+
 #define DEBUG
+//#define DEBUG_OUTPUT_QUARTENION_BINARY
 #define SERIAL_DEBUG SD1
+
+#define SERIAL_GPS SD2
 
 #define I2C_BUS I2CD1
 #define MAX_I2C_BUF 14
 
-#define I2C_THREADS_PRIO          (NORMALPRIO + 2)
-#define TIMEKEEPER_THREAD_PRIO    (I2C_THREADS_PRIO - 1)
+#define I2C_THREADS_PRIO        (NORMALPRIO + 3)
+#define GPS_THREAD_PRIO			(NORMALPRIO + 2)
+#define TIMEKEEPER_THREAD_PRIO  (NORMALPRIO + 1)
 
 #define GYRO_CAL_FLAG        (1UL << 0)
 #define ACCEL_CAL_FLAG       (1UL << 1)

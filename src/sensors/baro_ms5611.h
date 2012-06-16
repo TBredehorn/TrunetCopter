@@ -17,8 +17,6 @@
 
 #define PROM_NB                 8
 
-#define SEA_LEVEL_PRESSURE 1022.00
-
 typedef struct {
 	float fbaroms;
 	float ftempms;

@@ -39,6 +39,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "sensors/baro_ms5611.h"
 #include "sensors/imu_mpu6050.h"
 #include "sensors/magn_hmc5883.h"
+#include "sensors/gps_mtk.h"
 
 #include "algebra.h"
 
@@ -55,6 +56,7 @@ EepromFileStream EepromFile;
 
 baro_data_t baro_data;
 imu_data_t imu_data;
+gps_data_t gps_data;
 float q0, q1, q2, q3; // quaternion of sensor frame relative to auxiliary frame
 
 EventSource imu_event;
@@ -75,31 +77,42 @@ static msg_t ThreadDebug(void *arg) {
 
 	while (TRUE) {
 		chEvtWaitOneTimeout(EVENT_MASK(2), 10);
+#ifndef DEBUG_OUTPUT_QUARTENION_BINARY
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "Temperature: %f\r\n", baro_data.ftempms);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "Pressure: %f\r\n", baro_data.fbaroms);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "Altitude: %f\r\n", baro_data.faltims);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "----------------------------------\r\n");
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "Accelerometer(x, y, z): %f, ", imu_data.acc_x);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.acc_y);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.acc_z);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "Gyroscope(x, y, z): %f, ", imu_data.gyro_x);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.gyro_y);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.gyro_z);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "Magnetometer(x, y, z): %f, ", imu_data.mag_x);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.mag_y);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.mag_z);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "----------------------------------\r\n");
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "q0, q1, q2, q3: %f, ", q0);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", q1);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", q2);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", q3);
+		if (gps_data.valid == 1) {
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "----------------------------------\r\n");
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "satelites: %d\r\n", gps_data.satellites);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "latitude: %d\r\n", gps_data.latitude);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "longitude: %d\r\n", gps_data.longitude);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "altitude: %f\r\n", gps_data.altitude);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "speed(m/s): %f\r\n", gps_data.speed);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "heading(degrees): %f\r\n", gps_data.heading);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "UTC date: %d\r\n", gps_data.utc_date);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "UTC time: %d\r\n", gps_data.utc_time);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "milliseconds from epoch: %d\r\n", gps_data.time);
+		}
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "==================================\r\n");
+		chEvtBroadcastFlags(&imu_event, EVENT_MASK(3));
+		chThdSleepMilliseconds(500);
+#else
 		if (cnt_debug == 4) {
-			/*
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "Temperature: %f\r\n", baro_data.ftempms);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "Pressure: %f\r\n", baro_data.fbaroms);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "Altitude: %f\r\n", baro_data.faltims);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "----------------------------------\r\n");
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "Accelerometer(x, y, z): %f, ", imu_data.acc_x);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.acc_y);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.acc_z);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "Gyroscope(x, y, z): %f, ", imu_data.gyro_x);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.gyro_y);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.gyro_z);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "Magnetometer(x, y, z): %f, ", imu_data.mag_x);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.mag_y);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.mag_z);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "----------------------------------\r\n");
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "q0, q1, q2, q3: %f, ", q0);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", q1);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", q2);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", q3);
-			chprintf((BaseChannel *)&SERIAL_DEBUG, "==================================\r\n");
-			chEvtBroadcastFlags(&imu_event, EVENT_MASK(3));
-			chThdSleepMilliseconds(500);
-			*/
-
 			uint8_t i;
 
 			uint8_t * b1 = (uint8_t *) &q0;
@@ -163,12 +176,11 @@ static msg_t ThreadDebug(void *arg) {
 			}
 			chprintf((BaseChannel *)&SERIAL_DEBUG, ",\r\n");
 
-			//chThdSleepMilliseconds(20);
-
 			cnt_debug = 0;
 		}
 		chEvtBroadcastFlags(&imu_event, EVENT_MASK(3));
 		cnt_debug++;
+#endif
 	}
 
 	return 0;
@@ -231,6 +243,7 @@ int main(void) {
 	baro_ms5611_start();
 	imu_mpu6050_start();
 	magn_hmc5883_start();
+	gps_mtk_start();
 	
 	algebra_start();
 	/*
