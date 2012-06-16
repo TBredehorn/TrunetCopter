@@ -42,6 +42,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "algebra.h"
 
+uint16_t cnt_debug = 0;
+
 /*
  ******************************************************************************
  * EXTERNS
@@ -66,101 +68,107 @@ extern float sampleFreq;
 static WORKING_AREA(waThreadDebug, 256);
 static msg_t ThreadDebug(void *arg) {
 	(void)arg;
+	chRegSetThreadName("Debug");
 
 	struct EventListener self_el;
 	chEvtRegister(&imu_event, &self_el, 3);
 
 	while (TRUE) {
-		chEvtWaitOneTimeout(EVENT_MASK(2), 100);
-		/*
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "Temperature: %f\r\n", baro_data.ftempms);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "Pressure: %f\r\n", baro_data.fbaroms);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "Altitude: %f\r\n", baro_data.faltims);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "----------------------------------\r\n");
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "Accelerometer(x, y, z): %f, ", imu_data.acc_x);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.acc_y);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.acc_z);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "Gyroscope(x, y, z): %f, ", imu_data.gyro_x);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.gyro_y);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.gyro_z);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "Magnetometer(x, y, z): %f, ", imu_data.mag_x);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.mag_y);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.mag_z);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "----------------------------------\r\n");
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "q0, q1, q2, q3: %f, ", q0);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", q1);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", q2);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", q3);
-		chprintf((BaseChannel *)&SERIAL_DEBUG, "==================================\r\n");
+		chEvtWaitOneTimeout(EVENT_MASK(2), 10);
+		if (cnt_debug == 4) {
+			/*
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "Temperature: %f\r\n", baro_data.ftempms);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "Pressure: %f\r\n", baro_data.fbaroms);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "Altitude: %f\r\n", baro_data.faltims);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "----------------------------------\r\n");
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "Accelerometer(x, y, z): %f, ", imu_data.acc_x);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.acc_y);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.acc_z);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "Gyroscope(x, y, z): %f, ", imu_data.gyro_x);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.gyro_y);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.gyro_z);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "Magnetometer(x, y, z): %f, ", imu_data.mag_x);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", imu_data.mag_y);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", imu_data.mag_z);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "----------------------------------\r\n");
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "q0, q1, q2, q3: %f, ", q0);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", q1);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f, ", q2);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "%f\r\n", q3);
+			chprintf((BaseChannel *)&SERIAL_DEBUG, "==================================\r\n");
+			chEvtBroadcastFlags(&imu_event, EVENT_MASK(3));
+			chThdSleepMilliseconds(500);
+			*/
+
+			uint8_t i;
+
+			uint8_t * b1 = (uint8_t *) &q0;
+			for(i=0; i<4; i++) {
+				uint8_t b1q1 = (b1[i] >> 4) & 0x0f;
+				uint8_t b2q1 = (b1[i] & 0x0f);
+
+				uint8_t c1q1 = (b1q1 < 10) ? ('0' + b1q1) : 'A' + b1q1 - 10;
+				uint8_t c2q1 = (b2q1 < 10) ? ('0' + b2q1) : 'A' + b2q1 - 10;
+
+				sdWrite(&SERIAL_DEBUG, &c1q1, 1);
+				sdWrite(&SERIAL_DEBUG, &c2q1, 1);
+			}
+			chprintf((BaseChannel *)&SERIAL_DEBUG, ",");
+			uint8_t * b2 = (uint8_t *) &q1;
+			for(i=0; i<4; i++) {
+				uint8_t b1q2 = (b2[i] >> 4) & 0x0f;
+				uint8_t b2q2 = (b2[i] & 0x0f);
+
+				uint8_t c1q2 = (b1q2 < 10) ? ('0' + b1q2) : 'A' + b1q2 - 10;
+				uint8_t c2q2 = (b2q2 < 10) ? ('0' + b2q2) : 'A' + b2q2 - 10;
+
+				sdWrite(&SERIAL_DEBUG, &c1q2, 1);
+				sdWrite(&SERIAL_DEBUG, &c2q2, 1);
+			}
+			chprintf((BaseChannel *)&SERIAL_DEBUG, ",");
+			uint8_t * b3 = (uint8_t *) &q2;
+			for(i=0; i<4; i++) {
+				uint8_t b1q3 = (b3[i] >> 4) & 0x0f;
+				uint8_t b2q3 = (b3[i] & 0x0f);
+
+				uint8_t c1q3 = (b1q3 < 10) ? ('0' + b1q3) : 'A' + b1q3 - 10;
+				uint8_t c2q3 = (b2q3 < 10) ? ('0' + b2q3) : 'A' + b2q3 - 10;
+
+				sdWrite(&SERIAL_DEBUG, &c1q3, 1);
+				sdWrite(&SERIAL_DEBUG, &c2q3, 1);
+			}
+			chprintf((BaseChannel *)&SERIAL_DEBUG, ",");
+			uint8_t * b4 = (uint8_t *) &q3;
+			for(i=0; i<4; i++) {
+				uint8_t b1q4 = (b4[i] >> 4) & 0x0f;
+				uint8_t b2q4 = (b4[i] & 0x0f);
+
+				uint8_t c1q4 = (b1q4 < 10) ? ('0' + b1q4) : 'A' + b1q4 - 10;
+				uint8_t c2q4 = (b2q4 < 10) ? ('0' + b2q4) : 'A' + b2q4 - 10;
+
+				sdWrite(&SERIAL_DEBUG, &c1q4, 1);
+				sdWrite(&SERIAL_DEBUG, &c2q4, 1);
+			}
+			chprintf((BaseChannel *)&SERIAL_DEBUG, ",");
+			uint8_t * b5 = (uint8_t *) &sampleFreq;
+			for(i=0; i<4; i++) {
+				uint8_t b1 = (b5[i] >> 4) & 0x0f;
+				uint8_t b2 = (b5[i] & 0x0f);
+
+				uint8_t c1 = (b1 < 10) ? ('0' + b1) : 'A' + b1 - 10;
+				uint8_t c2 = (b2 < 10) ? ('0' + b2) : 'A' + b2 - 10;
+
+				sdWrite(&SERIAL_DEBUG, &c1, 1);
+				sdWrite(&SERIAL_DEBUG, &c2, 1);
+			}
+			chprintf((BaseChannel *)&SERIAL_DEBUG, ",\r\n");
+
+			//chThdSleepMilliseconds(20);
+
+			cnt_debug = 0;
+		}
 		chEvtBroadcastFlags(&imu_event, EVENT_MASK(3));
-		chThdSleepMilliseconds(500);
-		*/
-
-		uint8_t i;
-
-		uint8_t * b1 = (uint8_t *) &q0;
-		for(i=0; i<4; i++) {
-			uint8_t b1q1 = (b1[i] >> 4) & 0x0f;
-			uint8_t b2q1 = (b1[i] & 0x0f);
-
-			uint8_t c1q1 = (b1q1 < 10) ? ('0' + b1q1) : 'A' + b1q1 - 10;
-			uint8_t c2q1 = (b2q1 < 10) ? ('0' + b2q1) : 'A' + b2q1 - 10;
-
-			sdWrite(&SERIAL_DEBUG, &c1q1, 1);
-			sdWrite(&SERIAL_DEBUG, &c2q1, 1);
-		}
-		chprintf((BaseChannel *)&SERIAL_DEBUG, ",");
-		uint8_t * b2 = (uint8_t *) &q1;
-		for(i=0; i<4; i++) {
-			uint8_t b1q2 = (b2[i] >> 4) & 0x0f;
-			uint8_t b2q2 = (b2[i] & 0x0f);
-
-			uint8_t c1q2 = (b1q2 < 10) ? ('0' + b1q2) : 'A' + b1q2 - 10;
-			uint8_t c2q2 = (b2q2 < 10) ? ('0' + b2q2) : 'A' + b2q2 - 10;
-
-			sdWrite(&SERIAL_DEBUG, &c1q2, 1);
-			sdWrite(&SERIAL_DEBUG, &c2q2, 1);
-		}
-		chprintf((BaseChannel *)&SERIAL_DEBUG, ",");
-		uint8_t * b3 = (uint8_t *) &q2;
-		for(i=0; i<4; i++) {
-			uint8_t b1q3 = (b3[i] >> 4) & 0x0f;
-			uint8_t b2q3 = (b3[i] & 0x0f);
-
-			uint8_t c1q3 = (b1q3 < 10) ? ('0' + b1q3) : 'A' + b1q3 - 10;
-			uint8_t c2q3 = (b2q3 < 10) ? ('0' + b2q3) : 'A' + b2q3 - 10;
-
-			sdWrite(&SERIAL_DEBUG, &c1q3, 1);
-			sdWrite(&SERIAL_DEBUG, &c2q3, 1);
-		}
-		chprintf((BaseChannel *)&SERIAL_DEBUG, ",");
-		uint8_t * b4 = (uint8_t *) &q3;
-		for(i=0; i<4; i++) {
-			uint8_t b1q4 = (b4[i] >> 4) & 0x0f;
-			uint8_t b2q4 = (b4[i] & 0x0f);
-
-			uint8_t c1q4 = (b1q4 < 10) ? ('0' + b1q4) : 'A' + b1q4 - 10;
-			uint8_t c2q4 = (b2q4 < 10) ? ('0' + b2q4) : 'A' + b2q4 - 10;
-
-			sdWrite(&SERIAL_DEBUG, &c1q4, 1);
-			sdWrite(&SERIAL_DEBUG, &c2q4, 1);
-		}
-		chprintf((BaseChannel *)&SERIAL_DEBUG, ",");
-		uint8_t * b5 = (uint8_t *) &sampleFreq;
-		for(i=0; i<4; i++) {
-			uint8_t b1 = (b5[i] >> 4) & 0x0f;
-			uint8_t b2 = (b5[i] & 0x0f);
-
-			uint8_t c1 = (b1 < 10) ? ('0' + b1) : 'A' + b1 - 10;
-			uint8_t c2 = (b2 < 10) ? ('0' + b2) : 'A' + b2 - 10;
-
-			sdWrite(&SERIAL_DEBUG, &c1, 1);
-			sdWrite(&SERIAL_DEBUG, &c2, 1);
-		}
-		chprintf((BaseChannel *)&SERIAL_DEBUG, ",\r\n");
-
-		chEvtBroadcastFlags(&imu_event, EVENT_MASK(3));
-		//chThdSleepMilliseconds(20);
+		cnt_debug++;
 	}
 
 	return 0;
@@ -174,6 +182,7 @@ static msg_t ThreadDebug(void *arg) {
 static WORKING_AREA(waThreadLed, 64);
 static msg_t ThreadLed(void *arg) {
 	(void)arg;
+	chRegSetThreadName("LED");
 	
 	while (TRUE) {
 		palClearPad(GPIOB, 1);
