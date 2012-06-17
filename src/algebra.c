@@ -146,26 +146,19 @@ static msg_t ThreadQ(void *arg) {
 	(void)arg;
 
 	struct EventListener self_el;
-	chEvtRegister(&imu_event, &self_el, 2);
+	chEvtRegister(&imu_event, &self_el, 4);
 
 	now = chTimeNow();
 	while (TRUE) {
-		//chEvtWaitOne(EVENT_MASK(1));
-		chEvtWaitAll(EVENT_MASK(0) && EVENT_MASK(1));
-		//chprintf((BaseChannel *)&SERIAL_DEBUG, "Q");
+		chEvtWaitAll(EVENT_MASK(2) && EVENT_MASK(3));
 
-		//now += MS2ST(100);
-		//sampleFreq = 10;
 		now = chTimeNow();
 		sampleFreq = 1.0 / ((now-lastupdate) / (CH_FREQUENCY / 1.0));
-		//chprintf((BaseChannel *)&SERIAL_DEBUG, "now: %d\r\n", now);
-		//chprintf((BaseChannel *)&SERIAL_DEBUG, "lastupdate: %d\r\n", lastupdate);
-		//chprintf((BaseChannel *)&SERIAL_DEBUG, "sampleFreq: %f\r\n", sampleFreq);
 		lastupdate = now;
 
 		// gyro values are expressed in deg/sec, the * M_PI/180 will convert it to radians/sec
 		AHRSupdate(imu_data.gyro_x * M_PI/180, imu_data.gyro_y * M_PI/180, imu_data.gyro_z * M_PI/180, imu_data.acc_x, imu_data.acc_y, imu_data.acc_z, imu_data.mag_x, imu_data.mag_y, imu_data.mag_z);
-		chEvtBroadcastFlags(&imu_event, EVENT_MASK(2));
+		chEvtBroadcastFlags(&imu_event, EVENT_MASK(4));
 
 		//chThdSleepUntil(now);
 	}

@@ -9,8 +9,8 @@
 #define MPU60X0_H_
 
 #define I2C_MPU 			I2CD1
-#define MPU_INT_PORT		GPIOA
-#define MPU_INT_PIN			13
+#define MPU_INT_PORT		GPIOB
+#define MPU_INT_PIN			17
 #define MPU_ADDR			0b1101000 // AD0 = 0, AD1=1(0b1101001)
 
 #define AUX_VDDIO 			0x01
@@ -361,9 +361,9 @@ void write_mpu_accel(void);
 void write_mpu_power_mgmt1(void);
 void write_mpu_user_control(void);
 void write_mpu_int_cfg(void);
+void write_mpu_int_enable(void);
 void mpu_i2c_write(uint8_t addr, uint8_t value);
 void mpu_i2c_read_data(uint8_t addr, uint8_t length);
-void mpu_who_am_i(void);
 
 void imu_mpu6050_start(void);
 

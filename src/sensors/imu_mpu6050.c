@@ -174,19 +174,14 @@ void write_mpu_user_control(void){
  * This function writes value of int_pin_config into INT_PIN_CFG register.
  */
 void write_mpu_int_cfg(void){
-	//uint8_t mpu_txbuf[1], mpu_rxbuf[1];
-	//systime_t tmo = calc_timeout(&I2C_MPU, 1, 1);
-
-	//mpu_txbuf[0] = INT_PIN_CFG;
-	//i2cMasterTransmitTimeout(&I2C_MPU, MPU_ADDR, mpu_txbuf, 1, mpu_rxbuf, 1, tmo);
-	//chprintf((BaseChannel *)&OUTPUT,"INT_PIN_CFG Before: %x\r\n", mpu_rxbuf[0]);
-
-	//chThdSleepMilliseconds(5);
-
-	//int_pin_config = (mpu_rxbuf[0] | (1 << 1));
-	//chprintf((BaseChannel *)&OUTPUT,"INT_PIN_CFG After: %x\r\n", int_pin_config);
-	int_pin_config = 0b00000010;
 	mpu_i2c_write(INT_PIN_CFG, int_pin_config);
+}
+
+/*
+ * This function writes value of int_pin_enable into INT_ENABLE register.
+ */
+void write_mpu_int_enable(void){
+	mpu_i2c_write(INT_ENABLE, int_pin_enable);
 }
 
 /*
@@ -241,33 +236,6 @@ void mpu_i2c_read_data(uint8_t addr, uint8_t length){
 	imu_data.gyro_z = gyro[2] / 16.4f;
 }
 
-/*
-void mpu_who_am_i() {
-	uint8_t ack;
-	uint8_t mpu_txbuf[1], mpu_rxbuf[1];
-	systime_t tmo = calc_timeout(&I2C_MPU, 1, 1);
-
-	mpu_txbuf[0] = WHO_AM_I;
-	ack = i2cMasterTransmitTimeout(&I2C_MPU, MPU_ADDR, mpu_txbuf, 1, mpu_rxbuf, 1, tmo);
-	if (ack) {
-		chprintf((BaseChannel *)&OUTPUT, "+ACK|");
-	} else {
-		chprintf((BaseChannel *)&OUTPUT, "-ACK|");
-	}
-	if (mpu_rxbuf[0] == MPU_ADDR) {
-		chprintf((BaseChannel *)&OUTPUT, "+ADDRESS=%x|", mpu_rxbuf[0]);
-	} else {
-		chprintf((BaseChannel *)&OUTPUT, "-ADDRESS=%x|", mpu_rxbuf[0]);
-	}
-
-	mpu_txbuf[0] = PRODUCT_ID;
-	i2cMasterTransmit(&I2C_MPU, MPU_ADDR, mpu_txbuf, 1, mpu_rxbuf, 1);
-	chprintf((BaseChannel *)&OUTPUT, "PRODUCT_ID=%x", mpu_rxbuf[0]);
-
-	chprintf((BaseChannel *)&OUTPUT, "\r\n");
-}
-*/
-
 /**
  * Polling thread
  */
@@ -277,12 +245,12 @@ static msg_t PollIMUThread(void *arg){
 	chRegSetThreadName("PollIMU");
 
 	struct EventListener self_el;
-	chEvtRegister(&imu_event, &self_el, 0);
+	chEvtRegister(&imu_event, &self_el, 2);
 
 	while (TRUE) {
-		chEvtWaitOne(EVENT_MASK(3));
+		chEvtWaitOne(EVENT_MASK(0));
 		mpu_i2c_read_data(0x3B, 14); // Read accelerometer, temperature and gyro data
-		chEvtBroadcastFlags(&imu_event, EVENT_MASK(0));
+		chEvtBroadcastFlags(&imu_event, EVENT_MASK(2));
 
 	}
 	return 0;
@@ -294,17 +262,22 @@ static msg_t PollIMUThread(void *arg){
  *******************************************************************************
  */
 void imu_mpu6050_start(void){
-	set_mpu_sample_rate(9);
+	set_mpu_power_mgmt1(DEVICE_RESET_DIS, SLEEP_DIS, CYCLE_DIS, TEMPERATURE_EN, CLKSEL_XG);
+	set_mpu_interrupt_behavior(INT_LEVEL_HIGH, INT_OPEN_DIS, LATCH_INT_DIS, INT_RD_CLEAR_DIS, FSYNC_INT_LEVEL_HIGH, FSYNC_INT_DIS, I2C_BYPASS_EN, CLOCK_DIS);
+	set_mpu_interrupt_source(FF_DIS, MOT_DIS, ZMOT_DIS, FIFO_OFLOW_DIS, I2C_MST_INT_DIS, DATA_RDY_EN);
 	set_mpu_config_regsiter(EXT_SYNC_SET0, DLPF_CFG0);
 	set_mpu_gyro(XG_ST_DIS, YG_ST_DIS, ZG_ST_DIS, FS_SEL_2000);
 	set_mpu_accel(XA_ST_DIS, YA_ST_DIS, ZA_ST_DIS, AFS_SEL_8g, ACCEL_HPF0);
-	set_mpu_power_mgmt1(DEVICE_RESET_DIS, SLEEP_DIS, CYCLE_DIS, TEMPERATURE_EN, CLKSEL_XG);
 	set_mpu_user_control(USER_FIFO_DIS, I2C_MST_DIS, I2C_IF_DIS, FIFO_RESET_DIS, I2C_MST_RESET_DIS, SIG_COND_RESET_DIS);
+	set_mpu_sample_rate(9);
 
 	write_mpu_power_mgmt1();
-	write_mpu_int_cfg(); // enable I2C Auxiliary bypass on MPU
+	write_mpu_int_cfg();
+	write_mpu_int_enable();
+	write_mpu_config_register();
 	write_mpu_gyro();
 	write_mpu_accel();
+	write_mpu_user_control();
 	write_mpu_sample_rate();
 
 	chThdCreateStatic(PollIMUThreadWA,

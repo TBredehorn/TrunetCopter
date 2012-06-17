@@ -132,13 +132,12 @@ static msg_t PollMagnThread(void *arg){
 	chRegSetThreadName("PollMagn");
 
 	struct EventListener self_el;
-	chEvtRegister(&imu_event, &self_el, 1);
+	chEvtRegister(&imu_event, &self_el, 3);
 
 	while (TRUE) {
-		chEvtWaitOne(EVENT_MASK(3));
-		//chEvtWaitOne(EVENT_MASK(0));
+		chEvtWaitOne(EVENT_MASK(1));
 		hmc5883_getValuesfloat();
-		chEvtBroadcastFlags(&imu_event, EVENT_MASK(1));
+		chEvtBroadcastFlags(&imu_event, EVENT_MASK(3));
 	}
 	return 0;
 }

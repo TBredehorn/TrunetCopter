@@ -73,11 +73,13 @@ static msg_t ThreadDebug(void *arg) {
 	chRegSetThreadName("Debug");
 
 	struct EventListener self_el;
-	chEvtRegister(&imu_event, &self_el, 3);
+	chEvtRegister(&imu_event, &self_el, 5);
 
 	while (TRUE) {
-		chEvtWaitOneTimeout(EVENT_MASK(2), 10);
+		chEvtWaitOne(EVENT_MASK(4));
 #ifndef DEBUG_OUTPUT_QUARTENION_BINARY
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "frequency: %f\r\n", sampleFreq);
+		chprintf((BaseChannel *)&SERIAL_DEBUG, "----------------------------------\r\n");
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "Temperature: %f\r\n", baro_data.ftempms);
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "Pressure: %f\r\n", baro_data.fbaroms);
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "Altitude: %f\r\n", baro_data.faltims);
@@ -109,7 +111,7 @@ static msg_t ThreadDebug(void *arg) {
 			chprintf((BaseChannel *)&SERIAL_DEBUG, "milliseconds from epoch: %d\r\n", gps_data.time);
 		}
 		chprintf((BaseChannel *)&SERIAL_DEBUG, "==================================\r\n");
-		chEvtBroadcastFlags(&imu_event, EVENT_MASK(3));
+		chEvtBroadcastFlags(&imu_event, EVENT_MASK(5));
 		chThdSleepMilliseconds(500);
 #else
 		if (cnt_debug == 4) {
@@ -178,7 +180,7 @@ static msg_t ThreadDebug(void *arg) {
 
 			cnt_debug = 0;
 		}
-		chEvtBroadcastFlags(&imu_event, EVENT_MASK(3));
+		chEvtBroadcastFlags(&imu_event, EVENT_MASK(5));
 		cnt_debug++;
 #endif
 	}
@@ -186,6 +188,69 @@ static msg_t ThreadDebug(void *arg) {
 	return 0;
 }
 #endif
+
+/*
+ *  _____       _                             _
+ * |_   _|     | |                           | |
+ *   | |  _ __ | |_ ___ _ __ _ __ _   _ _ __ | |_ ___
+ *   | | | '_ \| __/ _ \ '__| '__| | | | '_ \| __/ __|
+ *  _| |_| | | | ||  __/ |  | |  | |_| | |_) | |_\__ \
+ * |_____|_| |_|\__\___|_|  |_|   \__,_| .__/ \__|___/
+ *                                     | |
+ *                                     |_|
+ */
+static void mpu6050_interrupt_handler(EXTDriver *extp, expchannel_t channel) {
+		(void)extp;
+		(void)channel;
+
+		chSysLockFromIsr();
+		chEvtBroadcastFlagsI(&imu_event, EVENT_MASK(0));
+		chSysUnlockFromIsr();
+}
+static void hmc5883_interrupt_handler(EXTDriver *extp, expchannel_t channel) {
+		(void)extp;
+		(void)channel;
+
+		chSysLockFromIsr();
+		chEvtBroadcastFlagsI(&imu_event, EVENT_MASK(1));
+		chSysUnlockFromIsr();
+}
+static const EXTConfig extcfg = {
+	{
+	    {EXT_CH_MODE_DISABLED, NULL},
+   	 	{EXT_CH_MODE_DISABLED, NULL},
+   	 	{EXT_CH_MODE_DISABLED, NULL},
+    	{EXT_CH_MODE_DISABLED, NULL},
+		{EXT_CH_MODE_DISABLED, NULL},
+		{EXT_CH_MODE_RISING_EDGE | EXT_CH_MODE_AUTOSTART, mpu6050_interrupt_handler},
+		{EXT_CH_MODE_DISABLED, NULL},
+    	{EXT_CH_MODE_DISABLED, NULL},
+    	{EXT_CH_MODE_DISABLED, NULL},
+		{EXT_CH_MODE_DISABLED, NULL},
+    	{EXT_CH_MODE_DISABLED, NULL},
+    	{EXT_CH_MODE_DISABLED, NULL},
+    	{EXT_CH_MODE_DISABLED, NULL},
+    	{EXT_CH_MODE_DISABLED, NULL},
+    	{EXT_CH_MODE_DISABLED, NULL},
+    	{EXT_CH_MODE_FALLING_EDGE | EXT_CH_MODE_AUTOSTART, hmc5883_interrupt_handler}
+	},
+	EXT_MODE_EXTI(0, /* 0 */
+	              0, /* 1 */
+	              0, /* 2 */
+	              0, /* 3 */
+	              0, /* 4 */
+	              EXT_MODE_GPIOB, /* 5 */
+	              0, /* 6 */
+	              0, /* 7 */
+	              0, /* 8 */
+	              0, /* 9 */
+	              0, /* 10 */
+	              0, /* 11 */
+	              0, /* 12 */
+	              0, /* 13 */
+	              0, /* 14 */
+	              EXT_MODE_GPIOC) /* 15 */
+};
 
 /*
  * Red LED blinker thread, times are in milliseconds.
@@ -207,7 +272,13 @@ static msg_t ThreadLed(void *arg) {
 }
 
 /*
- * Application entry point.
+ *  __  __       _
+ * |  \/  |     (_)
+ * | \  / | __ _ _ _ __
+ * | |\/| |/ _` | | '_ \
+ * | |  | | (_| | | | | |
+ * |_|  |_|\__,_|_|_| |_|
+ *
  */
 int main(void) {
 	/*
@@ -246,6 +317,9 @@ int main(void) {
 	gps_mtk_start();
 	
 	algebra_start();
+
+	extStart(&EXTD1, &extcfg);
+
 	/*
 	 * Creates the threads.
 	 */
