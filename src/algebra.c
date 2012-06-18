@@ -144,6 +144,7 @@ void AHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, floa
 static WORKING_AREA(waThreadQ, 512);
 static msg_t ThreadQ(void *arg) {
 	(void)arg;
+	chRegSetThreadName("Algebra");
 
 	struct EventListener self_el;
 	chEvtRegister(&imu_event, &self_el, 4);

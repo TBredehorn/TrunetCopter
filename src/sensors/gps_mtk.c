@@ -117,7 +117,7 @@ static msg_t PollGPSThread(void *arg){
 	*/
 
 	while (TRUE) {
-		c = chIOGetTimeout(&SERIAL_GPS, TIME_IMMEDIATE);
+		c = chIOGetTimeout(&SERIAL_GPS, MS2ST(10));
 		if ((ptr==0 && c==0xd0) || (ptr==1 && c==0xdd) || (ptr > 1 && ptr < 36))
 			nmea_buf[ptr++] = c;
 		else if (ptr==36) {
@@ -174,8 +174,13 @@ static msg_t PollGPSThread(void *arg){
 
 void gps_mtk_start(void) {
 
-	//sdStart(&SERIAL_GPS, &GPS_Serial_Config);
-	sdStart(&SERIAL_GPS, NULL);
+	const SerialConfig GPSPortConfig = {
+	    38400,
+	    0,
+	    USART_CR2_STOP1_BITS | USART_CR2_LINEN,
+	    0
+	};
+	sdStart(&SERIAL_GPS, &GPSPortConfig);
 
 	chThdSleepMilliseconds(1000);
 

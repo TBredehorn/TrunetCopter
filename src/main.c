@@ -294,7 +294,13 @@ int main(void) {
 	/*
 	 * Activates the serial driver 1 using the driver default configuration.
 	 */
-	sdStart(&SERIAL_DEBUG, NULL);
+	const SerialConfig debugPortConfig = {
+	    115200,
+	    0,
+	    USART_CR2_STOP1_BITS | USART_CR2_LINEN,
+	    0
+	};
+	sdStart(&SERIAL_DEBUG, &debugPortConfig);
 	chprintf((BaseChannel *)&SERIAL_DEBUG, "\r\nTrunetcopter\r\n");
 
 	/*
