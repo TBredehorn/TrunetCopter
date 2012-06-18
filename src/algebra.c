@@ -150,7 +150,7 @@ static msg_t ThreadQ(void *arg) {
 
 	now = chTimeNow();
 	while (TRUE) {
-		chEvtWaitAll(EVENT_MASK(2) && EVENT_MASK(3));
+		chEvtWaitAll(EVENT_MASK(2) && EVENT_MASK(3) && EVENT_MASK(5));
 
 		now = chTimeNow();
 		sampleFreq = 1.0 / ((now-lastupdate) / (CH_FREQUENCY / 1.0));

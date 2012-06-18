@@ -117,7 +117,7 @@ static msg_t PollGPSThread(void *arg){
 	*/
 
 	while (TRUE) {
-		c = chIOGet(&SERIAL_GPS);
+		c = chIOGetTimeout(&SERIAL_GPS, TIME_IMMEDIATE);
 		if ((ptr==0 && c==0xd0) || (ptr==1 && c==0xdd) || (ptr > 1 && ptr < 36))
 			nmea_buf[ptr++] = c;
 		else if (ptr==36) {
